@@ -32,4 +32,4 @@ oma_1_pull_down_top_200 <- oma_1_pull_down |>
   filter(FPKM > 480)
 
 
-listMarts(host = "parasite.wormbase.org")
+
