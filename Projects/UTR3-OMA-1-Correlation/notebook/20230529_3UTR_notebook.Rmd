@@ -1,0 +1,11 @@
+---
+title: "20230529_3UTR_notebook"
+author: "Yash Shukla"
+date: "2023-04-29"
+output: html_document
+---
+
+Date: 2023-04-29
+
+In our R dataset we observed that a large proportions of 1-cell data seem to have 3'UTR reads. One hypothesis we had is what it could be possible that 3'UTR binding proteins can prevent the degradation of these samples from MNase. To that end, we conducted a exact Fisher test - to see if there is a statistically significant overlap between OMA-1 pulldown data and the 3'UTR counts in th Riboseq dataset. 
+
