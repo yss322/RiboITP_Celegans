@@ -67,7 +67,6 @@ all_counts_diff [,"transcript":= NULL ]
 
 all_counts_diff <- setcolorder(all_counts_diff, "gene_name") 
 
-
 # Print the updated data.table
 
 
@@ -106,7 +105,20 @@ plotMD(qlf,
        main = "",
        hl.col = color.palette0(2), 
        legend = F)
+summary(decideTests(qlf, p.value = 0.05, adjust.method = "fdr"))
 
+#export list of up and down regulated genes
+toplist<-as.data.table(topTags(qlf, n =Inf))
+all_genes <- all_counts_diff[`1cell_A.x` > 0 | `1cell_B.x`> 0|`2cell_A.x` > 0 | `2cell_B.x`> 0,]
+down_signal <- toplist[table.logFC < (-1.5) & table.FDR <0.05,] 
+up_signal <- toplist[table.logFC > 1.5 & table.FDR < 0.05]
+write_csv(all_genes,"all_genes.csv")
+write_csv(down_signal,"down_signal.csv")
+write_csv(up_signal, "up_signal.csv" )
+View(toplist)
+
+genenames <- toplist[,1]
+?topTags
 #assessing p-value distribution 
 out <- topTags(qlf, n = "Inf")$table
 ggplot(out, aes(x = PValue)) + 
@@ -392,7 +404,7 @@ genelist <- qlf_entrez_up$entrezgene_id
 genelist <- qlf_entrez_down$entrezgene_id
 
 
-GO <-goana(genelist, species = "Ce")
-view(topGO(GO, n = Inf, p.value = 0.05))
+GO <-goana(genelist, species = "Ce", FDR = 0.001)
+
 
      
