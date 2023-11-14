@@ -6,8 +6,8 @@ library(edgeR)
 library(data.table)
 
 color.palette0 = colorRampPalette(c("#98abc5", "#8a89a6", "#7b6888", "#6b486b", "#a05d56", "#d0743c", "#ff8c00"), space="Lab")
-new.ribo <- Ribo("/Users/yashshukla/Documents/Computational/Celegans_riboITP/data/20230720_additional_replicates/celegans.ribo")
-original.ribo <- Ribo("data/celegans_duplicate_allstages.ribo")
+new.ribo <- Ribo("/Users/yashshukla/Documents/Computational/Celegans_riboITP/data/20230929_WT_ITP_reseq1/output_umi/ribo/all.ribo")
+original.ribo <- Ribo("/Users/yashshukla/Documents/Computational/Celegans_riboITP/data/celegans_duplicate_allstages.ribo")
 
 
 #get the required region counts for 2 and 4-cell data 
@@ -15,7 +15,15 @@ original.ribo <- Ribo("data/celegans_duplicate_allstages.ribo")
 ribo_cell_or<- get_region_counts(original.ribo,
                                       range.lower = 25,
                                       range.upper = 35,
-                                      experiment = c('4cell_B', '2cell_B'),
+                                      experiment = c('4cell_A','4cell_B', '2cell_B'),
+                                      length      = TRUE,
+                                      transcript  = FALSE,
+                                      tidy = F,
+                                      region      = c("CDS") )
+ribo_two_cell_A <-  get_region_counts(original.ribo,
+                                      range.lower = 28,
+                                      range.upper = 38,
+                                      experiment = c('2cell_A'),
                                       length      = TRUE,
                                       transcript  = FALSE,
                                       tidy = F,
@@ -23,7 +31,7 @@ ribo_cell_or<- get_region_counts(original.ribo,
 ribo_cell_new <-  get_region_counts(new.ribo,
                                       range.lower = 25,
                                       range.upper = 35,
-                                      experiment = c('2cell_C','4cell_C','4cell_D'),
+                                      experiment = c('2-cell_C','4-cell_C','4-cell_D'),
                                       length      = TRUE,
                                       transcript  = FALSE,
                                       tidy = F,
@@ -31,18 +39,22 @@ ribo_cell_new <-  get_region_counts(new.ribo,
 ribo_cell_or<- as.data.table(ribo_cell_or)
 
 ribo_cell_or [,CDS := (CDS+1)]
+
+ribo_two_cell_A <- as.data.table(ribo_two_cell_A )
+ribo_two_cell_A [,CDS := (CDS+1)]
 ribo_cell_new <-as.data.table(ribo_cell_new)
 ribo_cell_new [,CDS := (CDS+1)]
 
 rcw_diff_or = dcast(ribo_cell_or, transcript ~ experiment)  
-
+ribo_two_cell_A = dcast(ribo_two_cell_A , transcript ~ experiment)  
 rcw_diff_new = dcast(ribo_cell_new , transcript ~ experiment)  
 
-rcw_diff_ribo = merge.data.table(rcw_diff_or,rcw_diff_new,by='transcript')
+rcw_diff = merge.data.table(ribo_two_cell_A ,rcw_diff_or,by='transcript')
+rcw_diff_ribo =merge.data.table(rcw_diff ,rcw_diff_new ,by='transcript')
 
 colnames(rcw_diff_ribo)
-setcolorder(rcw_diff_ribo, c("transcript",    "2cell_B",  "2cell_C"   ,"4cell_B","4cell_C"  ,  "4cell_D"   ))
-colnames(rcw_diff_ribo)<- c("transcript",    "2cell_B_ribo",  "2cell_C_ribo"   ,"4cell_B_ribo","4cell_C_ribo"  ,  "4cell_D_ribo")
+setcolorder(rcw_diff_ribo, c("transcript", "2cell_A",  "2cell_B",  "2-cell_C" ,"4cell_A","4cell_B","4-cell_C"  ,  "4-cell_D"   ))
+colnames(rcw_diff_ribo)<- c("transcript", "2cell_A_ribo",   "2cell_B_ribo",  "2cell_C_ribo" ,"4cell_A_ribo"  ,"4cell_B_ribo","4cell_C_ribo"  ,  "4cell_D_ribo")
 #processing RNA-seq 
 rnaseq_diff <- get_rnaseq(ribo.object = original.ribo,
                           tidy        = F,
@@ -58,7 +70,9 @@ all_counts_diff = merge(rcw_diff_ribo,rnaseq_w_diff, by= "transcript")
 
 
 exptype <- factor(c("twocell.Ribo",
+                    "twocell.Ribo",
                      "twocell.Ribo",
+                    "fourcell.Ribo",
                      "fourcell.Ribo",
                      "fourcell.Ribo",
                      "fourcell.Ribo",
@@ -78,6 +92,8 @@ y <- estimateDisp(y,design)
 plotBCV(y)
 plotMDS(y)
 
+?filterByExpr
+
 fit <- glmQLFit(y,design)
 
 my.contrasts <- makeContrasts(
@@ -94,13 +110,13 @@ qlf <- glmQLFTest(fit, contrast=my.contrasts[,"TE_fourcellvstwocell"])
 
 summary(decideTests(qlf, p.value = 0.05, adjust.method = "fdr"))
 plotMD(qlf, 
-       ylim =c(-8,8), 
+       ylim =c(-10,10), 
        p.value = 0.05,
        hl.cex = 0.75, 
        main = "",
        hl.col = color.palette0(2), 
        legend = F)
-top <-topTags(qlf)
+top <-topTags(qlf,p.value = 0.05)
 head (qlf$genes)
 
 view(top)

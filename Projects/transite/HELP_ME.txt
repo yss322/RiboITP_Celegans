@@ -1,0 +1,6 @@
+HELP_ME 
+
+I obtained the sequences that we more or less in log-fold change from the pairwise translational analysis folder. More specifically, I used the one-cell to two-cell change. 
+
+After obtaining the list, I ran the pipeline provided in  rbpanalysiscommands folder to obtain the 3UTR sequences. I can also obtain the CDS,UTR5 using this code. 
+

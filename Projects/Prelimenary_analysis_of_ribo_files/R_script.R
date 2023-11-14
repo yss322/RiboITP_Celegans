@@ -10,7 +10,8 @@ plot_length_distribution(x           = original.ribo,
                          region      = "CDS",
                          range.lower = 20,
                          range.upper = 38,
-                         fraction    = FALSE)
+                         fraction    = TRUE
+                         )
                          
 get_info(original.ribo)$attributes$metagene_radius
 

@@ -11,10 +11,9 @@ library(EnhancedVolcano)
 library(biomaRt)
 
 
-color.palette0 = colorRampPalette(c("#98abc5", "#8a89a6", "#7b6888", "#6b486b", "#a05d56", "#d0743c", "#ff8c00"), space="Lab")
-original.ribo <- Ribo("data/celegans_duplicate_allstages.ribo")
-original.ribo
 
+original.ribo <- Ribo("/Users/yashshukla/Documents/Computational/Celegans_riboITP/data/celegans_duplicate_allstages.ribo")
+reseq.ribo <- Ribo("/Users/yashshukla/Documents/Computational/Celegans_riboITP/data/20230929_WT_ITP_reseq1/output_umi/ribo/all.ribo")
 #get the required region counts for 1 and 2-cell data 
 
 ribo_one_two_cell<- get_region_counts(original.ribo,
@@ -25,6 +24,8 @@ ribo_one_two_cell<- get_region_counts(original.ribo,
                         transcript  = FALSE,
                         tidy = F,
                         region      = c("CDS") )
+
+# the two-cell A data is slightly biases towards higher sized reads
 ribo_two_cell_A <-  get_region_counts(original.ribo,
                                               range.lower = 28,
                                               range.upper = 38,
@@ -33,19 +34,32 @@ ribo_two_cell_A <-  get_region_counts(original.ribo,
                                               transcript  = FALSE,
                                               tidy = F,
                                               region      = c("CDS") )
+ribo_two_cell_C<-  get_region_counts(reseq.ribo,
+                                      range.lower = 25,
+                                      range.upper = 35,
+                                      experiment = c('2-cell_C'),
+                                      length      = TRUE,
+                                      transcript  = FALSE,
+                                      tidy = F,
+                                      region      = c("CDS") )
+
 ribo_one_two_cell<- as.data.table(ribo_one_two_cell)
 ribo_two_cell_A <-as.data.table(ribo_two_cell_A)
+ribo_two_cell_C <-as.data.table(ribo_two_cell_C)
 
-#adding pseudocounts of +1 
+#adding pseudocounts of +1. This is to avoid the massivie bias in log fold when one of the counts is 0
 
 ribo_one_two_cell [,CDS := (CDS+1)]
 ribo_two_cell_A [,CDS := (CDS+1)]
-
+ribo_two_cell_C [,CDS := (CDS+1)]
 rcw_diff_one_two = dcast(ribo_one_two_cell, transcript ~ experiment)  
 
 rcw_diff_two_A = dcast(ribo_two_cell_A, transcript ~ experiment)  
+rcw_diff_two_C = dcast(ribo_two_cell_C, transcript ~ experiment)  
+rcw_diff = inner_join(rcw_diff_one_two,rcw_diff_two_A, by = "transcript")
+rcw_diff_ribo = inner_join(rcw_diff,rcw_diff_two_C , by = "transcript")
 
-rcw_diff_ribo = inner_join(rcw_diff_one_two,rcw_diff_two_A, by = "transcript")
+
 
 #processing RNA-seq 
 rnaseq_diff <- get_rnaseq(ribo.object = original.ribo,
@@ -54,18 +68,31 @@ rnaseq_diff <- get_rnaseq(ribo.object = original.ribo,
                           experiment = c('1cell_A','1cell_B','2cell_A','2cell_B'),
                           region = "CDS")
 rnaseq_diff <- as.data.table(rnaseq_diff)
-rnaseq_w_diff = dcast(rnaseq_diff, transcript ~ experiment)                          
+rnaseq_w_diff = dcast(rnaseq_diff, transcript ~ experiment)   
+
+# combining the RNA-seq and riboITP data into a single table 
 
 all_counts_diff = merge(rnaseq_w_diff, rcw_diff_ribo, by= "transcript")
 
 
 # Extract the gene name using strsplit and data.table
+
 all_counts_diff <- all_counts_diff[, transcript := as.character(transcript)]
 all_counts_diff[, gene_name := sapply(strsplit(transcript, "gene_symbol:"), function(x) tail(x, n = 1))]
 
 all_counts_diff [,"transcript":= NULL ]
 
 all_counts_diff <- setcolorder(all_counts_diff, "gene_name") 
+colnames(all_counts_diff)<-c("gene_name",
+"1-cell_A.RNA",
+                             "1-cell_B.RNA",
+                             "2-cell_A.RNA",
+                             "2-cell_B.RNA",
+                             "1-cell_A.RIBO",
+                             "1-cell_B.RIBO",
+                             "2-cell_A.RIBO",
+                             "2-cell_B.RIBO",
+                             "2-cell_C.RIBO")
 
 # Print the updated data.table
 
@@ -73,11 +100,12 @@ all_counts_diff <- setcolorder(all_counts_diff, "gene_name")
 exptype <- factor(c("onecell.RNA","onecell.RNA",
                     "twocell.RNA","twocell.RNA",
                     "onecell.Ribo","onecell.Ribo","twocell.Ribo",
-                    "twocell.Ribo" )  )
+                    "twocell.Ribo","twocell.Ribo" )  )
 y <- DGEList(counts=all_counts_diff[,-1],
              group=exptype, genes = all_counts_diff[,1])
 
-keep <- filterByExpr(y)
+
+keep <- filterByExpr(y,min.total.count = 15 )
 y <- y[keep,,keep.lib.sizes=FALSE]
 y <- calcNormFactors(y, method = "TMM")
 design <- model.matrix(~0+exptype)
@@ -104,21 +132,25 @@ plotMD(qlf,
        hl.cex = 0.5, 
        main = "",
        hl.col = color.palette0(2), 
-       legend = F)
+       legend = F,
+       adjust.method = "fdr")
 summary(decideTests(qlf, p.value = 0.05, adjust.method = "fdr"))
+
 
 #export list of up and down regulated genes
 toplist<-as.data.table(topTags(qlf, n =Inf))
-all_genes <- all_counts_diff[`1cell_A.x` > 0 | `1cell_B.x`> 0|`2cell_A.x` > 0 | `2cell_B.x`> 0,]
+all_genes <- all_counts_diff[`1-cell_A.RNA` > 0 | `1-cell_B.RNA`> 0|`2-cell_A.RNA` > 0 | `2-cell_B.RNA`> 0,]
 down_signal <- toplist[table.logFC < (-1.5) & table.FDR <0.05,] 
 up_signal <- toplist[table.logFC > 1.5 & table.FDR < 0.05]
-write_csv(all_genes,"all_genes.csv")
-write_csv(down_signal,"down_signal.csv")
-write_csv(up_signal, "up_signal.csv" )
-View(toplist)
 
-genenames <- toplist[,1]
-?topTags
+
+write.table(all_genes$gene_name,"all_genes.txt", col.names = FALSE, row.names = FALSE, quote = FALSE)
+write.table(down_signal$table.gene_name,"down_signal.txt", col.names = FALSE, row.names = FALSE, quote = FALSE)
+write.table(up_signal$table.gene_name, "up_signal.txt", col.names = FALSE ,row.names = FALSE, quote = FALSE)
+
+
+upgenenames <- toplist[,1]
+
 #assessing p-value distribution 
 out <- topTags(qlf, n = "Inf")$table
 ggplot(out, aes(x = PValue)) + 
@@ -134,7 +166,7 @@ ggplot(qlf$table, aes(x = logFC))+
 
 #using ggplot 
 
-AB_cell_list <- fread("/Users/yashshukla/Documents/Computational/Celegans_riboITP/Projects/Pairwise_tranlsation_analysis/data/exported_genes.csv")
+AB_cell_list <- fread("/Users/yashshukla/Documents/Computational/Celegans_riboITP/Projects/Pairwise_translational_analysis/data/exported_genes.csv")
 
 AB_cell_highlight <- AB_cell_list[,1]
 
@@ -144,7 +176,7 @@ overlap_AB_cell <- qlf$genes$gene_name %in% AB_cell_highlight$V1
 
 highlight_AB_cell <- rownames(qlf$genes)[overlap_AB_cell]
 
-P_cell_list <- fread("/Users/yashshukla/Documents/Computational/Celegans_riboITP/Projects/Pairwise_tranlsation_analysis/data/exported_genes_P-cell.csv")
+P_cell_list <- fread("/Users/yashshukla/Documents/Computational/Celegans_riboITP/Projects/Pairwise_translational_analysis/data/exported_genes_P-cell.csv")
 p_cell_highlight <- P_cell_list[,1]
 overlap_P_cell <-qlf$genes$gene_name %in% p_cell_highlight$V1
 highlight_p_cell <- rownames(qlf$genes)[overlap_P_cell]
@@ -156,7 +188,7 @@ ggplot(qlf$table,
   geom_jitter(data = subset(qlf$table,rownames(qlf$table) %in% highlight_p_cell), color = "blue",size = 1.5) +
   geom_jitter(color ="black",size = 0.8, alpha = 0.3)
 
-Oma_pull_down <- read_excel("/Users/yashshukla/Documents/Computational/Celegans_riboITP/Projects/Pairwise_tranlsation_analysis/data/FPKM_OMA-1_Pull_down_wbgene.xlsx")
+Oma_pull_down <- readxl::read_excel("/Users/yashshukla/Documents/Computational/Celegans_riboITP/Projects/Pairwise_translational_analysis/data/FPKM_OMA-1_Pull_down_wbgene.xlsx")
 oma_highlight <- Oma_pull_down[,2]
 overlap_oma_pull <-qlf$genes$gene_name %in% oma_highlight$gene_id
 highlight_oma_pull <- rownames(qlf$genes)[overlap_oma_pull]
@@ -170,9 +202,9 @@ qlf$table
 
 keyvals = ifelse(out$logFC < 0 & out$FDR < 0.05, '#6e005f',
                  ifelse(out$logFC > 0 & out$FDR < 0.05, '#045275', 'grey60'))
-names(keyvals)[keyvals == '#6e005f'] <- 'Down'
-names(keyvals)[keyvals == '#045275'] <- 'Up'
-names(keyvals)[keyvals == 'grey60'] <- 'NS'
+names(keyvals)[keyvals == '#6e005f'] <- 'Increase from 1-cell to 2-cell'
+names(keyvals)[keyvals == '#045275'] <- 'Decrease from 1-cell to 2-cell'
+names(keyvals)[keyvals == 'grey60'] <- ''
 
 
 
@@ -182,15 +214,96 @@ EnhancedVolcano(out,
                 lab = out$gene_name,
                 x = 'logFC',
                 y = 'FDR',
-                title = 'Translational efficiency',
+                title = NULL,
                 subtitle = NULL ,
-                axisLabSize = 14,
-                titleLabSize = 16,
-                subtitleLabSize = 14,
-                legendIconSize = 2.0,
-                legendLabSize = 12,
+                axisLabSize = 28,
+                titleLabSize = 0,
+                subtitleLabSize = 28,
+                legendIconSize = 0,
+                legendLabSize = 0,
                 pCutoff = 0.05,
-                FCcutoff = 0, 
+                FCcutoff = 0.5, 
+                cutoffLineType = 'blank',
+                vline = c(0),
+                #                vlineCol = c('grey50', 'grey0','grey50'),
+                vlineType = 'blank',
+                vlineWidth = 0.5,
+                drawConnectors = TRUE,
+                pointSize = c(ifelse(out$FDR< 0.05, 1, 0.2)),
+                caption = "",
+                legendLabels = c("NS", "NS", "NS", "5% FDR"),
+                widthConnectors = 0.5,
+                colConnectors = 'black',
+                colCustom = keyvals, 
+                #                col=c('grey60', 'grey60', 'grey60', color.palette0(2)[2]),
+                colAlpha = 0.9,
+                gridlines.minor = FALSE,
+                gridlines.major = T,
+                legendPosition = 'right')
+
+keyvals = ifelse(out$logFC < 0 & out$FDR < 0.05, '#6e005f', 'grey60')
+names(keyvals)[keyvals == '#6e005f'] <- 'Increase from 1-cell to 2-cell'
+names(keyvals)[keyvals == 'grey60'] <- ''
+
+
+
+EnhancedVolcano(out,
+                xlim = c(-10, 7),
+                ylim = c(0, 3.5),
+                lab = out$gene_name,
+                x = 'logFC',
+                y = 'FDR',
+                title = NULL,
+                subtitle = NULL ,
+                axisLabSize = 28,
+                titleLabSize = 0,
+                subtitleLabSize = 28,
+                legendIconSize = 0,
+                legendLabSize = 0,
+                pCutoff = 0.05,
+                FCcutoff = 0.5, 
+                cutoffLineType = 'blank',
+                vline = c(0),
+                #                vlineCol = c('grey50', 'grey0','grey50'),
+                vlineType = 'blank',
+                vlineWidth = 0.5,
+                drawConnectors = TRUE,
+                pointSize = c(ifelse(out$FDR< 0.05, 1, 0.2)),
+                caption = "",
+                legendLabels = c("NS", "NS", "NS", "5% FDR"),
+                widthConnectors = 0.5,
+                colConnectors = 'black',
+                colCustom = keyvals, 
+                #                col=c('grey60', 'grey60', 'grey60', color.palette0(2)[2]),
+                colAlpha = 0.9,
+                gridlines.minor = FALSE,
+                gridlines.major = T,
+                legendPosition = 'right')
+
+
+
+
+keyvals = ifelse(out$logFC > 0 & out$FDR < 0.05, '#045275', 'grey60')
+names(keyvals)[keyvals == '#045275'] <- 'Increase from 1-cell to 2-cell'
+names(keyvals)[keyvals == 'grey60'] <- ''
+
+
+
+EnhancedVolcano(out,
+                xlim = c(-10, 7),
+                ylim = c(0, 3.5),
+                lab = out$gene_name,
+                x = 'logFC',
+                y = 'FDR',
+                title = NULL,
+                subtitle = NULL ,
+                axisLabSize = 28,
+                titleLabSize = 0,
+                subtitleLabSize = 28,
+                legendIconSize = 0,
+                legendLabSize = 0,
+                pCutoff = 0.05,
+                FCcutoff = 0.5, 
                 cutoffLineType = 'blank',
                 vline = c(0),
                 #                vlineCol = c('grey50', 'grey0','grey50'),
@@ -210,12 +323,54 @@ EnhancedVolcano(out,
                 legendPosition = 'right')
 
 # highlight AB and P-cell data 
-keyvals = ifelse(out$gene_name %in% AB_cell_highlight$V1   , 'red',ifelse(out$gene_name %in% p_cell_highlight$V1,'blue','grey60'))
+keyvals = ifelse(out$gene_name %in% AB_cell_highlight$V1   , 'red',ifelse(out$gene_name %in% p_cell_highlight$V1,'blue','#F3F3F3'))
                  
 names(keyvals)[keyvals == 'red'] <- 'AB'
 names(keyvals)[keyvals == 'blue'] <- 'P'
+names(keyvals)[keyvals == '#F3F3F3'] <- ''
 
 
+
+EnhancedVolcano(out,
+                xlim = c(-10, 7),
+                ylim = c(0, 3.5),
+                lab = out$gene_name,
+                x = 'logFC',
+                y = 'FDR',
+                title = 'Translational efficiency',
+                subtitle = NULL ,
+                axisLabSize = 28,
+                titleLabSize = 0,
+                subtitleLabSize = 0,
+                legendIconSize = 0,
+                legendLabSize = 0,
+                pCutoff = 0.05,
+                FCcutoff = 0, 
+                cutoffLineType = 'blank',
+                vline = c(0),
+                #                vlineCol = c('grey50', 'grey0','grey50'),
+                labSize = 0,
+                vlineType = 'blank',
+                vlineWidth = 0.5,
+                drawConnectors = FALSE,
+                pointSize = c(ifelse(
+                  out$gene_name %in% AB_cell_highlight$V1   , 
+                  2 ,
+                  ifelse(
+                    out$gene_name %in% p_cell_highlight$V1,
+                    2,
+                    0.5))),
+                caption = "",
+                legendLabels = c("NS", "NS", "NS", "5% FDR"),
+                widthConnectors = 0.5,
+                colConnectors = 'black',
+                colCustom = keyvals, 
+                #                col=c('grey60', 'grey60', 'grey60', color.palette0(2)[2]),
+                colAlpha = 0.9,
+                gridlines.minor = FALSE,
+                gridlines.major = T,
+                legendPosition = 'right')
+  
 
 
 EnhancedVolcano(out,
@@ -240,7 +395,10 @@ EnhancedVolcano(out,
                 vlineType = 'blank',
                 vlineWidth = 0.5,
                 drawConnectors = FALSE,
-                pointSize = c(ifelse(out$FDR< 0.05, 1, 0.2)),
+                pointSize = c(ifelse(
+                  out$gene_name %in% AB_cell_highlight$V1   , 
+                  2 ,
+                  0.5)),
                 caption = "",
                 legendLabels = c("NS", "NS", "NS", "5% FDR"),
                 widthConnectors = 0.5,
@@ -251,14 +409,147 @@ EnhancedVolcano(out,
                 gridlines.minor = FALSE,
                 gridlines.major = T,
                 legendPosition = 'right')
-  
-              
-keyvals = ifelse(out$gene_name %in% AB_cell_highlight$V1   , 'red',ifelse(out$gene_name %in% p_cell_highlight$V1,'blue','grey60'))
 
-names(keyvals)[keyvals == 'red'] <- 'AB'
-names(keyvals)[keyvals == 'blue'] <- 'P'
+EnhancedVolcano(out,
+                xlim = c(-10, 7),
+                ylim = c(0, 3.5),
+                lab = out$gene_name,
+                x = 'logFC',
+                y = 'FDR',
+                title = 'Translational efficiency',
+                subtitle = NULL ,
+                axisLabSize = 14,
+                titleLabSize = 16,
+                subtitleLabSize = 14,
+                legendIconSize = 2.0,
+                legendLabSize = 12,
+                pCutoff = 0.05,
+                FCcutoff = 0, 
+                cutoffLineType = 'blank',
+                vline = c(0),
+                #                vlineCol = c('grey50', 'grey0','grey50'),
+                labSize = 0,
+                vlineType = 'blank',
+                vlineWidth = 0.5,
+                drawConnectors = FALSE,
+                pointSize = c(ifelse(
+                  out$gene_name %in% AB_cell_highlight$V1   , 
+                  2 ,
+                  0.5)),
+                caption = "",
+                legendLabels = c("NS", "NS", "NS", "5% FDR"),
+                widthConnectors = 0.5,
+                colConnectors = 'black',
+                colCustom = keyvals, 
+                #                col=c('grey60', 'grey60', 'grey60', color.palette0(2)[2]),
+                colAlpha = 0.9,
+                gridlines.minor = FALSE,
+                gridlines.major = T,
+                legendPosition = 'right')
 
 
+                 
+
+keyvals = ifelse(out$gene_name %in% AB_cell_highlight$V1   , 'red',ifelse(out$gene_name %in% somatic_oma_1$gene_id  , 'green','#F3F3F3'))                
+
+
+names(keyvals)[keyvals == 'red'] <- 'All AB-cell transcripts'
+names(keyvals)[keyvals == 'green'] <- 'OMA-1 binding'
+names(keyvals)[keyvals == '#F3F3F3'] <- ''
+EnhancedVolcano(out,
+                xlim = c(-10, 7),
+                ylim = c(0, 3.5),
+                lab = out$gene_name,
+                x = 'logFC',
+                y = 'FDR',
+                title = 'Translational efficiency',
+                subtitle = NULL ,
+                axisLabSize = 14,
+                titleLabSize = 16,
+                subtitleLabSize = 14,
+                legendIconSize = 2.0,
+                legendLabSize = 12,
+                pCutoff = 0.05,
+                FCcutoff = 0, 
+                cutoffLineType = 'blank',
+                vline = c(0),
+                #                vlineCol = c('grey50', 'grey0','grey50'),
+                labSize = 0,
+                vlineType = 'blank',
+                vlineWidth = 0.5,
+                drawConnectors = FALSE,
+                pointSize = c(ifelse(
+                  out$gene_name %in% AB_cell_highlight$V1   , 
+                  2 ,
+                  ifelse(
+                    out$gene_name %in% somatic_oma_1$gene_id,
+                    2,
+                    0.5))),
+                caption = "",
+                legendLabels = c("NS", "NS", "NS", "5% FDR"),
+                widthConnectors = 0.5,
+                colConnectors = 'black',
+                colCustom = keyvals, 
+                #                col=c('grey60', 'grey60', 'grey60', color.palette0(2)[2]),
+                colAlpha = 0.9,
+                gridlines.minor = FALSE,
+                gridlines.major = T,
+                legendPosition = 'right')
+
+germline_oma_1 <- oma_highlight [oma_highlight$gene_id %in% p_cell_highlight$V1,]
+
+keyvals = ifelse(out$gene_name %in% p_cell_highlight$V1   , 'blue',ifelse(out$gene_name %in% germline_oma_1$gene_id  , 'green','#F3F3F3'))                
+
+
+names(keyvals)[keyvals == 'blue'] <- 'All -cell transcripts'
+names(keyvals)[keyvals == 'green'] <- 'OMA-1 binding'
+names(keyvals)[keyvals == '#F3F3F3'] <- ''
+
+
+
+
+
+
+keyvals = ifelse(out$gene_name %in% germline_oma_1$gene_id  , 'green','#F3F3F3')      
+
+
+names(keyvals)[keyvals == 'green'] <- 'OMA-1 binding P-cell transcripts'
+names(keyvals)[keyvals == '#F3F3F3'] <- ''
+EnhancedVolcano(out,
+                xlim = c(-10, 7),
+                ylim = c(0, 3.5),
+                lab = out$gene_name,
+                x = 'logFC',
+                y = 'FDR',
+                title = 'Translational efficiency',
+                subtitle = NULL ,
+                axisLabSize = 14,
+                titleLabSize = 16,
+                subtitleLabSize = 14,
+                legendIconSize = 2.0,
+                legendLabSize = 12,
+                pCutoff = 0.05,
+                FCcutoff = 0, 
+                cutoffLineType = 'blank',
+                vline = c(0),
+                #                vlineCol = c('grey50', 'grey0','grey50'),
+                labSize = 0,
+                vlineType = 'blank',
+                vlineWidth = 0.5,
+                drawConnectors = FALSE,
+                pointSize = c(ifelse( out$gene_name %in% germline_oma_1$gene_id,
+                    3,
+                    0.5)),
+                caption = "",
+                legendLabels = c("NS", "NS", "NS", "5% FDR"),
+                widthConnectors = 0.5,
+                colConnectors = 'black',
+                colCustom = keyvals, 
+                #                col=c('grey60', 'grey60', 'grey60', color.palette0(2)[2]),
+                colAlpha = 0.9,
+                gridlines.minor = FALSE,
+                gridlines.major = T,
+                legendPosition = 'right')
 
 #Oma-1 and AB-cell 
 somatic_oma_1 <- oma_highlight [oma_highlight$gene_id %in% AB_cell_highlight$V1,]
@@ -347,6 +638,7 @@ theme_pubr()+
 oma_1_all <-  out [out$gene_name %in% oma_highlight$gene_id, c("logFC", "FDR")]
 
 oma_1_ab_cell <- out [out$gene_name %in% somatic_oma_1$gene_id, c("logFC", "FDR")]
+oma_1_p_cell<-out [out$gene_name %in% germline_oma_1$gene_id, c("logFC", "FDR")]
 
 
 ggplot() + 
@@ -354,17 +646,21 @@ ggplot() +
                aes(
                  y = "All transcripts",
                  x = logFC,
-                 fill = '#67FA5D'
-               )
-  ) + 
+                 fill = '#67FA5D')
+               )+
+  geom_boxplot(data = oma_1_p_cell,
+               aes(
+                 y = "P-cell transcripts",
+                 x = logFC,
+                 fill = 'blue')
+               )+
   geom_boxplot(data = oma_1_ab_cell,
                aes(
                  y = "AB-cell transcripts",
                  x = logFC,
-                 fill = '#695736'
-               )
-  )+
-  scale_fill_manual(values = c("green", "#695736"))+
+                 fill = 'red')
+               )+
+  scale_fill_manual(values = c("green", "red",'blue'))+
   theme_pubr()+
   theme(axis.text = element_text(size = 15),
         axis.title = element_text(size = 20)) 
@@ -406,5 +702,9 @@ genelist <- qlf_entrez_down$entrezgene_id
 
 GO <-goana(genelist, species = "Ce", FDR = 0.001)
 
+#####################
+#miscellanous 
+#get CPM-value table 
+cpm_all_count_diff <- cpm(y)
 
-     
+cpm_all_count_diff<- cbind(all_counts_diff$gene_name,cpm_all_count_diff)

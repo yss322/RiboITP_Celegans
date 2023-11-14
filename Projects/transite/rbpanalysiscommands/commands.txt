@@ -1,0 +1,19 @@
+# Get the 3' UTR features
+awk ' $4~/UTR3/ {print $0}' /Users/yashshukla/Documents/Computational/Celegans_riboITP/data/celegans_reference/appris_celegans_v1_actual_regions_new.bed > /Users/yashshukla/Documents/Computational/Celegans_riboITP/Projects/transite/celegans_3UTR.bed
+
+# Extract 3' UTR sequences
+bedtools getfasta -fi /Users/yashshukla/Documents/Computational/Celegans_riboITP/data/celegans_reference/appris_celegans_v1_selected_new.fa -bed /Users/yashshukla/Documents/Computational/Celegans_riboITP/Projects/transite/celegans_3UTR.bed > /Users/yashshukla/Documents/Computational/Celegans_riboITP/Projects/transite/celegans_3UTR.fa
+
+# Extract only those sequences for the genes of interest
+python extract_C_elegans_sequences_from_genes.py -i gene_ids.txt -f XX_UTR3.fa
+
+# Read in the sequences into R
+fore_seqs<- Biostrings::readRNAStringSet(XX_UTR3.foreground.fa, format="fasta", use.names=TRUE)
+back_seqs<- Biostrings::readRNAStringSet(XX_UTR3.background.fa, format="fasta", use.names=TRUE)
+
+# Run transite
+transite::run_kmer_tsma(foreground_sets=list(as.character(fore_seqs)), 
+background_set=as.character(back_seqs), k=7, n_cores=2)
+
+# Check uncorrected p-value distribution
+http://varianceexplained.org/statistics/interpreting-pvalue-histogram/

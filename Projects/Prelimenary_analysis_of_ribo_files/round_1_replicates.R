@@ -8,9 +8,10 @@ original.ribo <- Ribo("/Users/yashshukla/Documents/Computational/Celegans_riboIT
 # Replotting length distrubution after using the two 3-embryo data as replicates. (Sanity Check)
 plot_length_distribution(x           = original.ribo,
                          region      = "CDS",
+                         experiment = c("1cell_A","1cell_B","2cell_B","4cell_A","4cell_B","8cell_A"),
                          range.lower = 20,
-                         range.upper = 38,
-                         fraction    = FALSE)
+                         range.upper = 40,
+                         fraction    = TRUE)
 
 get_info(original.ribo)$attributes$metagene_radius
 
@@ -32,6 +33,7 @@ plot_metagene(original.ribo,
 
 
 plot_region_counts(x           = original.ribo,
+                   experiment = c("1cell_A","1cell_B","2cell_B","4cell_A","4cell_B","8cell_A"),
                    range.lower = 28,
                    range.upper = 32)
 
@@ -39,6 +41,7 @@ rcw <- get_region_counts(original.ribo,
                          range.lower = 28,
                          range.upper = 32,
                          region = "CDS",
+                         experiment = c("1cell_A","1cell_B","2cell_B","4cell_A","4cell_B","8cell_A"),
                          transcript = FALSE,
                          tidy = TRUE)
 rcw <- as.data.table(rcw)

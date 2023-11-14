@@ -1,0 +1,4 @@
+2-cell_C	1	/work/07024/yshukla/ls6/C_elegans_development/data/sequencing_data/20230929_WT_reseq_1/WT_2cell_C_ITP/WT_2cell_C_ITP_CKDL230029732-1A_22CGVGLT3_L8_1.fq.gz
+4-cell_C	1	/work/07024/yshukla/ls6/C_elegans_development/data/sequencing_data/20230929_WT_reseq_1/WT_4cell_C_ITP/WT_4cell_C_ITP_CKDL230029732-1A_22CGVGLT3_L8_1.fq.gz
+8-cell_D	1	/work/07024/yshukla/ls6/C_elegans_development/data/sequencing_data/20230929_WT_reseq_1/WT_8cell_D_ITP/WT_8cell_D_ITP_CKDL230029732-1A_22CGVGLT3_L8_1.fq.gz
+4-cell_D	1	/work/07024/yshukla/ls6/C_elegans_development/data/sequencing_data/20230929_WT_reseq_1/WT_4cell_D_ITP/WT_4cell_D_ITP_CKDL230029732-1A_22CGVGLT3_L8_1.fq.gz
